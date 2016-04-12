@@ -19,6 +19,7 @@ func TestRepositoriesService_List_authenticatedUser(t *testing.T) {
 
 	mux.HandleFunc("/user/repos", func(w http.ResponseWriter, r *http.Request) {
 		testMethod(t, r, "GET")
+		testHeader(t, r, "Accept", mediaTypeLicensesPreview)
 		fmt.Fprint(w, `[{"id":1},{"id":2}]`)
 	})
 
@@ -39,13 +40,13 @@ func TestRepositoriesService_List_specifiedUser(t *testing.T) {
 
 	mux.HandleFunc("/users/u/repos", func(w http.ResponseWriter, r *http.Request) {
 		testMethod(t, r, "GET")
+		testHeader(t, r, "Accept", mediaTypeLicensesPreview)
 		testFormValues(t, r, values{
 			"type":      "owner",
 			"sort":      "created",
 			"direction": "asc",
 			"page":      "2",
 		})
-
 		fmt.Fprint(w, `[{"id":1}]`)
 	})
 
@@ -66,12 +67,27 @@ func TestRepositoriesService_List_invalidUser(t *testing.T) {
 	testURLParseError(t, err)
 }
 
+func ExampleRepositoriesService_List() {
+	client := NewClient(nil)
+
+	user := "willnorris"
+	opt := &RepositoryListOptions{Type: "owner", Sort: "updated", Direction: "desc"}
+
+	repos, _, err := client.Repositories.List(user, opt)
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	fmt.Printf("Recently updated repositories by %q: %v", user, Stringify(repos))
+}
+
 func TestRepositoriesService_ListByOrg(t *testing.T) {
 	setup()
 	defer teardown()
 
 	mux.HandleFunc("/orgs/o/repos", func(w http.ResponseWriter, r *http.Request) {
 		testMethod(t, r, "GET")
+		testHeader(t, r, "Accept", mediaTypeLicensesPreview)
 		testFormValues(t, r, values{
 			"type": "forks",
 			"page": "2",
@@ -191,7 +207,8 @@ func TestRepositoriesService_Get(t *testing.T) {
 
 	mux.HandleFunc("/repos/o/r", func(w http.ResponseWriter, r *http.Request) {
 		testMethod(t, r, "GET")
-		fmt.Fprint(w, `{"id":1,"name":"n","description":"d","owner":{"login":"l"}}`)
+		testHeader(t, r, "Accept", mediaTypeLicensesPreview)
+		fmt.Fprint(w, `{"id":1,"name":"n","description":"d","owner":{"login":"l"},"license":{"key":"mit"}}`)
 	})
 
 	repo, _, err := client.Repositories.Get("o", "r")
@@ -199,9 +216,30 @@ func TestRepositoriesService_Get(t *testing.T) {
 		t.Errorf("Repositories.Get returned error: %v", err)
 	}
 
-	want := &Repository{ID: Int(1), Name: String("n"), Description: String("d"), Owner: &User{Login: String("l")}}
+	want := &Repository{ID: Int(1), Name: String("n"), Description: String("d"), Owner: &User{Login: String("l")}, License: &License{Key: String("mit")}}
 	if !reflect.DeepEqual(repo, want) {
 		t.Errorf("Repositories.Get returned %+v, want %+v", repo, want)
+	}
+}
+
+func TestRepositoriesService_GetByID(t *testing.T) {
+	setup()
+	defer teardown()
+
+	mux.HandleFunc("/repositories/1", func(w http.ResponseWriter, r *http.Request) {
+		testMethod(t, r, "GET")
+		testHeader(t, r, "Accept", mediaTypeLicensesPreview)
+		fmt.Fprint(w, `{"id":1,"name":"n","description":"d","owner":{"login":"l"},"license":{"key":"mit"}}`)
+	})
+
+	repo, _, err := client.Repositories.GetByID(1)
+	if err != nil {
+		t.Errorf("Repositories.GetByID returned error: %v", err)
+	}
+
+	want := &Repository{ID: Int(1), Name: String("n"), Description: String("d"), Owner: &User{Login: String("l")}, License: &License{Key: String("mit")}}
+	if !reflect.DeepEqual(repo, want) {
+		t.Errorf("Repositories.GetByID returned %+v, want %+v", repo, want)
 	}
 }
 
@@ -364,6 +402,7 @@ func TestRepositoriesService_ListBranches(t *testing.T) {
 
 	mux.HandleFunc("/repos/o/r/branches", func(w http.ResponseWriter, r *http.Request) {
 		testMethod(t, r, "GET")
+		testHeader(t, r, "Accept", mediaTypeProtectedBranchesPreview)
 		testFormValues(t, r, values{"page": "2"})
 		fmt.Fprint(w, `[{"name":"master", "commit" : {"sha" : "a57781", "url" : "https://api.github.com/repos/o/r/commits/a57781"}}]`)
 	})
@@ -386,7 +425,8 @@ func TestRepositoriesService_GetBranch(t *testing.T) {
 
 	mux.HandleFunc("/repos/o/r/branches/b", func(w http.ResponseWriter, r *http.Request) {
 		testMethod(t, r, "GET")
-		fmt.Fprint(w, `{"name":"n", "commit":{"sha":"s"}}`)
+		testHeader(t, r, "Accept", mediaTypeProtectedBranchesPreview)
+		fmt.Fprint(w, `{"name":"n", "commit":{"sha":"s"}, "protection": {"enabled": true, "required_status_checks": {"enforcement_level": "everyone","contexts": []}}}`)
 	})
 
 	branch, _, err := client.Repositories.GetBranch("o", "r", "b")
@@ -394,13 +434,85 @@ func TestRepositoriesService_GetBranch(t *testing.T) {
 		t.Errorf("Repositories.GetBranch returned error: %v", err)
 	}
 
-	want := &Branch{Name: String("n"), Commit: &Commit{SHA: String("s")}}
+	want := &Branch{
+		Name:   String("n"),
+		Commit: &Commit{SHA: String("s")},
+		Protection: &Protection{
+			Enabled: Bool(true),
+			RequiredStatusChecks: &RequiredStatusChecks{
+				EnforcementLevel: String("everyone"),
+				Contexts:         &[]string{},
+			},
+		},
+	}
+
 	if !reflect.DeepEqual(branch, want) {
 		t.Errorf("Repositories.GetBranch returned %+v, want %+v", branch, want)
+	}
+}
+
+func TestRepositoriesService_EditBranch(t *testing.T) {
+	setup()
+	defer teardown()
+
+	input := &Branch{
+		Protection: &Protection{
+			Enabled: Bool(true),
+			RequiredStatusChecks: &RequiredStatusChecks{
+				EnforcementLevel: String("everyone"),
+				Contexts:         &[]string{"continous-integration"},
+			},
+		},
+	}
+
+	mux.HandleFunc("/repos/o/r/branches/b", func(w http.ResponseWriter, r *http.Request) {
+		v := new(Branch)
+		json.NewDecoder(r.Body).Decode(v)
+
+		testMethod(t, r, "PATCH")
+		if !reflect.DeepEqual(v, input) {
+			t.Errorf("Request body = %+v, want %+v", v, input)
+		}
+		testHeader(t, r, "Accept", mediaTypeProtectedBranchesPreview)
+		fmt.Fprint(w, `{"protection": {"enabled": true, "required_status_checks": {"enforcement_level": "everyone", "contexts": ["continous-integration"]}}}`)
+	})
+
+	branch, _, err := client.Repositories.EditBranch("o", "r", "b", input)
+	if err != nil {
+		t.Errorf("Repositories.EditBranch returned error: %v", err)
+	}
+
+	if !reflect.DeepEqual(branch, input) {
+		t.Errorf("Repositories.EditBranch returned %+v, want %+v", branch, input)
 	}
 }
 
 func TestRepositoriesService_ListLanguages_invalidOwner(t *testing.T) {
 	_, _, err := client.Repositories.ListLanguages("%", "%")
 	testURLParseError(t, err)
+}
+
+func TestRepositoriesService_License(t *testing.T) {
+	setup()
+	defer teardown()
+
+	mux.HandleFunc("/repos/o/r/license", func(w http.ResponseWriter, r *http.Request) {
+		testMethod(t, r, "GET")
+		fmt.Fprint(w, `{"license":{"key":"mit","name":"MIT License","url":"https://api.github.com/licenses/mit","featured":true}}`)
+	})
+
+	got, _, err := client.Repositories.License("o", "r")
+	if err != nil {
+		t.Errorf("Repositories.License returned error: %v", err)
+	}
+
+	want := &License{
+		Name:     String("MIT License"),
+		Key:      String("mit"),
+		URL:      String("https://api.github.com/licenses/mit"),
+		Featured: Bool(true),
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("Repositories.License returned %+v, want %+v", got, want)
+	}
 }

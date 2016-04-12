@@ -6,11 +6,14 @@
 package github
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -52,6 +55,46 @@ func TestRepositoriesService_GetRelease(t *testing.T) {
 	want := &RepositoryRelease{ID: Int(1)}
 	if !reflect.DeepEqual(release, want) {
 		t.Errorf("Repositories.GetRelease returned %+v, want %+v", release, want)
+	}
+}
+
+func TestRepositoriesService_GetLatestRelease(t *testing.T) {
+	setup()
+	defer teardown()
+
+	mux.HandleFunc("/repos/o/r/releases/latest", func(w http.ResponseWriter, r *http.Request) {
+		testMethod(t, r, "GET")
+		fmt.Fprint(w, `{"id":3}`)
+	})
+
+	release, resp, err := client.Repositories.GetLatestRelease("o", "r")
+	if err != nil {
+		t.Errorf("Repositories.GetLatestRelease returned error: %v\n%v", err, resp.Body)
+	}
+
+	want := &RepositoryRelease{ID: Int(3)}
+	if !reflect.DeepEqual(release, want) {
+		t.Errorf("Repositories.GetLatestRelease returned %+v, want %+v", release, want)
+	}
+}
+
+func TestRepositoriesService_GetReleaseByTag(t *testing.T) {
+	setup()
+	defer teardown()
+
+	mux.HandleFunc("/repos/o/r/releases/tags/foo", func(w http.ResponseWriter, r *http.Request) {
+		testMethod(t, r, "GET")
+		fmt.Fprint(w, `{"id":13}`)
+	})
+
+	release, resp, err := client.Repositories.GetReleaseByTag("o", "r", "foo")
+	if err != nil {
+		t.Errorf("Repositories.GetReleaseByTag returned error: %v\n%v", err, resp.Body)
+	}
+
+	want := &RepositoryRelease{ID: Int(13)}
+	if !reflect.DeepEqual(release, want) {
+		t.Errorf("Repositories.GetReleaseByTag returned %+v, want %+v", release, want)
 	}
 }
 
@@ -161,6 +204,52 @@ func TestRepositoriesService_GetReleaseAsset(t *testing.T) {
 	want := &ReleaseAsset{ID: Int(1)}
 	if !reflect.DeepEqual(asset, want) {
 		t.Errorf("Repositories.GetReleaseAsset returned %+v, want %+v", asset, want)
+	}
+}
+
+func TestRepositoriesService_DownloadReleaseAsset_Stream(t *testing.T) {
+	setup()
+	defer teardown()
+
+	mux.HandleFunc("/repos/o/r/releases/assets/1", func(w http.ResponseWriter, r *http.Request) {
+		testMethod(t, r, "GET")
+		testHeader(t, r, "Accept", defaultMediaType)
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.Header().Set("Content-Disposition", "attachment; filename=hello-world.txt")
+		fmt.Fprint(w, "Hello World")
+	})
+
+	reader, _, err := client.Repositories.DownloadReleaseAsset("o", "r", 1)
+	if err != nil {
+		t.Errorf("Repositories.DownloadReleaseAsset returned error: %v", err)
+	}
+	want := []byte("Hello World")
+	content, err := ioutil.ReadAll(reader)
+	if err != nil {
+		t.Errorf("Repositories.DownloadReleaseAsset returned bad reader: %v", err)
+	}
+	if !bytes.Equal(want, content) {
+		t.Errorf("Repositories.DownloadReleaseAsset returned %+v, want %+v", content, want)
+	}
+}
+
+func TestRepositoriesService_DownloadReleaseAsset_Redirect(t *testing.T) {
+	setup()
+	defer teardown()
+
+	mux.HandleFunc("/repos/o/r/releases/assets/1", func(w http.ResponseWriter, r *http.Request) {
+		testMethod(t, r, "GET")
+		testHeader(t, r, "Accept", defaultMediaType)
+		http.Redirect(w, r, "/yo", http.StatusFound)
+	})
+
+	_, got, err := client.Repositories.DownloadReleaseAsset("o", "r", 1)
+	if err != nil {
+		t.Errorf("Repositories.DownloadReleaseAsset returned error: %v", err)
+	}
+	want := "/yo"
+	if !strings.HasSuffix(got, want) {
+		t.Errorf("Repositories.DownloadReleaseAsset returned %+v, want %+v", got, want)
 	}
 }
 

@@ -30,6 +30,7 @@ type Gist struct {
 	GitPullURL  *string                   `json:"git_pull_url,omitempty"`
 	GitPushURL  *string                   `json:"git_push_url,omitempty"`
 	CreatedAt   *time.Time                `json:"created_at,omitempty"`
+	UpdatedAt   *time.Time                `json:"updated_at,omitempty"`
 }
 
 func (g Gist) String() string {
@@ -143,6 +144,24 @@ func (s *GistsService) ListStarred(opt *GistListOptions) ([]Gist, *Response, err
 // GitHub API docs: http://developer.github.com/v3/gists/#get-a-single-gist
 func (s *GistsService) Get(id string) (*Gist, *Response, error) {
 	u := fmt.Sprintf("gists/%v", id)
+	req, err := s.client.NewRequest("GET", u, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	gist := new(Gist)
+	resp, err := s.client.Do(req, gist)
+	if err != nil {
+		return nil, resp, err
+	}
+
+	return gist, resp, err
+}
+
+// GetRevision gets a specific revision of a gist.
+//
+// GitHub API docs: https://developer.github.com/v3/gists/#get-a-specific-revision-of-a-gist
+func (s *GistsService) GetRevision(id, sha string) (*Gist, *Response, error) {
+	u := fmt.Sprintf("gists/%v/%v", id, sha)
 	req, err := s.client.NewRequest("GET", u, nil)
 	if err != nil {
 		return nil, nil, err

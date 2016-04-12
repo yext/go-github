@@ -46,6 +46,20 @@ func TestMarkdown(t *testing.T) {
 	}
 }
 
+func ExampleClient_Markdown() {
+	client := NewClient(nil)
+
+	input := "# heading #\n\nLink to issue #1"
+	opt := &MarkdownOptions{Mode: "gfm", Context: "google/go-github"}
+
+	output, _, err := client.Markdown(input, opt)
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	fmt.Println(output)
+}
+
 func TestListEmojis(t *testing.T) {
 	setup()
 	defer teardown()
@@ -72,7 +86,7 @@ func TestAPIMeta(t *testing.T) {
 
 	mux.HandleFunc("/meta", func(w http.ResponseWriter, r *http.Request) {
 		testMethod(t, r, "GET")
-		fmt.Fprint(w, `{"hooks":["h"], "git":["g"], "verifiable_password_authentication": true}`)
+		fmt.Fprint(w, `{"hooks":["h"], "git":["g"], "pages":["p"], "verifiable_password_authentication": true}`)
 	})
 
 	meta, _, err := client.APIMeta()
@@ -83,9 +97,88 @@ func TestAPIMeta(t *testing.T) {
 	want := &APIMeta{
 		Hooks: []string{"h"},
 		Git:   []string{"g"},
+		Pages: []string{"p"},
 		VerifiablePasswordAuthentication: Bool(true),
 	}
 	if !reflect.DeepEqual(want, meta) {
 		t.Errorf("APIMeta returned %+v, want %+v", meta, want)
+	}
+}
+
+func TestOctocat(t *testing.T) {
+	setup()
+	defer teardown()
+
+	input := "input"
+	output := "sample text"
+
+	mux.HandleFunc("/octocat", func(w http.ResponseWriter, r *http.Request) {
+		testMethod(t, r, "GET")
+		testFormValues(t, r, values{"s": input})
+		w.Header().Set("Content-Type", "application/octocat-stream")
+		fmt.Fprint(w, output)
+	})
+
+	got, _, err := client.Octocat(input)
+	if err != nil {
+		t.Errorf("Octocat returned error: %v", err)
+	}
+
+	if want := output; got != want {
+		t.Errorf("Octocat returned %+v, want %+v", got, want)
+	}
+}
+
+func TestZen(t *testing.T) {
+	setup()
+	defer teardown()
+
+	output := "sample text"
+
+	mux.HandleFunc("/zen", func(w http.ResponseWriter, r *http.Request) {
+		testMethod(t, r, "GET")
+		w.Header().Set("Content-Type", "text/plain;charset=utf-8")
+		fmt.Fprint(w, output)
+	})
+
+	got, _, err := client.Zen()
+	if err != nil {
+		t.Errorf("Zen returned error: %v", err)
+	}
+
+	if want := output; got != want {
+		t.Errorf("Zen returned %+v, want %+v", got, want)
+	}
+}
+
+func TestRepositoriesService_ListServiceHooks(t *testing.T) {
+	setup()
+	defer teardown()
+
+	mux.HandleFunc("/hooks", func(w http.ResponseWriter, r *http.Request) {
+		testMethod(t, r, "GET")
+		fmt.Fprint(w, `[{
+			"name":"n",
+			"events":["e"],
+			"supported_events":["s"],
+			"schema":[
+			  ["a", "b"]
+			]
+		}]`)
+	})
+
+	hooks, _, err := client.Repositories.ListServiceHooks()
+	if err != nil {
+		t.Errorf("Repositories.ListHooks returned error: %v", err)
+	}
+
+	want := []ServiceHook{{
+		Name:            String("n"),
+		Events:          []string{"e"},
+		SupportedEvents: []string{"s"},
+		Schema:          [][]string{{"a", "b"}},
+	}}
+	if !reflect.DeepEqual(hooks, want) {
+		t.Errorf("Repositories.ListServiceHooks returned %+v, want %+v", hooks, want)
 	}
 }

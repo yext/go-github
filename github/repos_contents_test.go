@@ -2,32 +2,97 @@ package github
 
 import (
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"reflect"
 	"testing"
 )
 
-func TestDecode(t *testing.T) {
-	setup()
-	defer teardown()
-	r := RepositoryContent{Encoding: String("base64"), Content: String("aGVsbG8=")}
-	o, err := r.Decode()
-	if err != nil {
-		t.Errorf("Failed to decode content.")
+func TestRepositoryContent_Decode(t *testing.T) {
+	tests := []struct {
+		encoding, content *string // input encoding and content
+		want              string  // desired output
+		wantErr           bool    // whether an error is expected
+	}{
+		{
+			encoding: String("base64"),
+			content:  String("aGVsbG8="),
+			want:     "hello",
+			wantErr:  false,
+		},
+		{
+			encoding: String("bad"),
+			content:  String("aGVsbG8="),
+			want:     "",
+			wantErr:  true,
+		},
 	}
-	want := "hello"
-	if string(o) != want {
-		t.Errorf("RepositoryContent.Decode returned %+v, want %+v", string(o), want)
+
+	for _, tt := range tests {
+		r := RepositoryContent{Encoding: tt.encoding, Content: tt.content}
+		o, err := r.Decode()
+		if err != nil && !tt.wantErr {
+			t.Errorf("RepositoryContent(%q, %q) returned unexpected error: %v", tt.encoding, tt.content, err)
+		}
+		if err == nil && tt.wantErr {
+			t.Errorf("RepositoryContent(%q, %q) did not return unexpected error", tt.encoding, tt.content)
+		}
+		if got, want := string(o), tt.want; got != want {
+			t.Errorf("RepositoryContent.Decode returned %+v, want %+v", got, want)
+		}
 	}
 }
 
-func TestDecodeBadEncoding(t *testing.T) {
-	setup()
-	defer teardown()
-	r := RepositoryContent{Encoding: String("bad")}
-	_, err := r.Decode()
-	if err == nil {
-		t.Errorf("Should fail to decode non-base64")
+func TestRepositoryContent_GetContent(t *testing.T) {
+	tests := []struct {
+		encoding, content *string // input encoding and content
+		want              string  // desired output
+		wantErr           bool    // whether an error is expected
+	}{
+		{
+			encoding: String(""),
+			content:  String("hello"),
+			want:     "hello",
+			wantErr:  false,
+		},
+		{
+			encoding: nil,
+			content:  String("hello"),
+			want:     "hello",
+			wantErr:  false,
+		},
+		{
+			encoding: nil,
+			content:  nil,
+			want:     "",
+			wantErr:  false,
+		},
+		{
+			encoding: String("base64"),
+			content:  String("aGVsbG8="),
+			want:     "hello",
+			wantErr:  false,
+		},
+		{
+			encoding: String("bad"),
+			content:  String("aGVsbG8="),
+			want:     "",
+			wantErr:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		r := RepositoryContent{Encoding: tt.encoding, Content: tt.content}
+		got, err := r.GetContent()
+		if err != nil && !tt.wantErr {
+			t.Errorf("RepositoryContent(%q, %q) returned unexpected error: %v", tt.encoding, tt.content, err)
+		}
+		if err == nil && tt.wantErr {
+			t.Errorf("RepositoryContent(%q, %q) did not return unexpected error", tt.encoding, tt.content)
+		}
+		if want := tt.want; got != want {
+			t.Errorf("RepositoryContent.GetContent returned %+v, want %+v", got, want)
+		}
 	}
 }
 
@@ -54,7 +119,88 @@ func TestRepositoriesService_GetReadme(t *testing.T) {
 	}
 }
 
-func TestRepositoriesService_GetContent_File(t *testing.T) {
+func ExampleRepositoriesService_GetReadme() {
+	client := NewClient(nil)
+
+	readme, _, err := client.Repositories.GetReadme("google", "go-github", nil)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	content, err := readme.GetContent()
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	fmt.Printf("google/go-github README:\n%v\n", content)
+}
+
+func TestRepositoriesService_DownloadContents_Success(t *testing.T) {
+	setup()
+	defer teardown()
+	mux.HandleFunc("/repos/o/r/contents/d", func(w http.ResponseWriter, r *http.Request) {
+		testMethod(t, r, "GET")
+		fmt.Fprint(w, `[{
+		  "type": "file",
+		  "name": "f",
+		  "download_url": "`+server.URL+`/download/f"
+		}]`)
+	})
+	mux.HandleFunc("/download/f", func(w http.ResponseWriter, r *http.Request) {
+		testMethod(t, r, "GET")
+		fmt.Fprint(w, "foo")
+	})
+
+	r, err := client.Repositories.DownloadContents("o", "r", "d/f", nil)
+	if err != nil {
+		t.Errorf("Repositories.DownloadContents returned error: %v", err)
+	}
+
+	bytes, err := ioutil.ReadAll(r)
+	if err != nil {
+		t.Errorf("Error reading response body: %v", err)
+	}
+	r.Close()
+
+	if got, want := string(bytes), "foo"; got != want {
+		t.Errorf("Repositories.DownloadContents returned %v, want %v", got, want)
+	}
+}
+
+func TestRepositoriesService_DownloadContents_NoDownloadURL(t *testing.T) {
+	setup()
+	defer teardown()
+	mux.HandleFunc("/repos/o/r/contents/d", func(w http.ResponseWriter, r *http.Request) {
+		testMethod(t, r, "GET")
+		fmt.Fprint(w, `[{
+		  "type": "file",
+		  "name": "f",
+		}]`)
+	})
+
+	_, err := client.Repositories.DownloadContents("o", "r", "d/f", nil)
+	if err == nil {
+		t.Errorf("Repositories.DownloadContents did not return expected error")
+	}
+}
+
+func TestRepositoriesService_DownloadContents_NoFile(t *testing.T) {
+	setup()
+	defer teardown()
+	mux.HandleFunc("/repos/o/r/contents/d", func(w http.ResponseWriter, r *http.Request) {
+		testMethod(t, r, "GET")
+		fmt.Fprint(w, `[]`)
+	})
+
+	_, err := client.Repositories.DownloadContents("o", "r", "d/f", nil)
+	if err == nil {
+		t.Errorf("Repositories.DownloadContents did not return expected error")
+	}
+}
+
+func TestRepositoriesService_GetContents_File(t *testing.T) {
 	setup()
 	defer teardown()
 	mux.HandleFunc("/repos/o/r/contents/p", func(w http.ResponseWriter, r *http.Request) {
@@ -69,7 +215,7 @@ func TestRepositoriesService_GetContent_File(t *testing.T) {
 	})
 	fileContents, _, _, err := client.Repositories.GetContents("o", "r", "p", &RepositoryContentGetOptions{})
 	if err != nil {
-		t.Errorf("Repositories.GetContents_File returned error: %v", err)
+		t.Errorf("Repositories.GetContents returned error: %v", err)
 	}
 	want := &RepositoryContent{Type: String("file"), Name: String("LICENSE"), Size: Int(20678), Encoding: String("base64"), Path: String("LICENSE")}
 	if !reflect.DeepEqual(fileContents, want) {
@@ -77,7 +223,46 @@ func TestRepositoriesService_GetContent_File(t *testing.T) {
 	}
 }
 
-func TestRepositoriesService_GetContent_Directory(t *testing.T) {
+func TestRepositoriesService_GetContents_FilenameNeedsEscape(t *testing.T) {
+	setup()
+	defer teardown()
+	mux.HandleFunc("/repos/o/r/contents/p#?%/中.go", func(w http.ResponseWriter, r *http.Request) {
+		testMethod(t, r, "GET")
+		fmt.Fprint(w, `{}`)
+	})
+	_, _, _, err := client.Repositories.GetContents("o", "r", "p#?%/中.go", &RepositoryContentGetOptions{})
+	if err != nil {
+		t.Fatalf("Repositories.GetContents returned error: %v", err)
+	}
+}
+
+func TestRepositoriesService_GetContents_DirectoryWithSpaces(t *testing.T) {
+	setup()
+	defer teardown()
+	mux.HandleFunc("/repos/o/r/contents/some directory/file.go", func(w http.ResponseWriter, r *http.Request) {
+		testMethod(t, r, "GET")
+		fmt.Fprint(w, `{}`)
+	})
+	_, _, _, err := client.Repositories.GetContents("o", "r", "some directory/file.go", &RepositoryContentGetOptions{})
+	if err != nil {
+		t.Fatalf("Repositories.GetContents returned error: %v", err)
+	}
+}
+
+func TestRepositoriesService_GetContents_DirectoryWithPlusChars(t *testing.T) {
+	setup()
+	defer teardown()
+	mux.HandleFunc("/repos/o/r/contents/some directory+name/file.go", func(w http.ResponseWriter, r *http.Request) {
+		testMethod(t, r, "GET")
+		fmt.Fprint(w, `{}`)
+	})
+	_, _, _, err := client.Repositories.GetContents("o", "r", "some directory+name/file.go", &RepositoryContentGetOptions{})
+	if err != nil {
+		t.Fatalf("Repositories.GetContents returned error: %v", err)
+	}
+}
+
+func TestRepositoriesService_GetContents_Directory(t *testing.T) {
 	setup()
 	defer teardown()
 	mux.HandleFunc("/repos/o/r/contents/p", func(w http.ResponseWriter, r *http.Request) {
@@ -88,7 +273,7 @@ func TestRepositoriesService_GetContent_Directory(t *testing.T) {
 		  "path": "lib"
 		},
 		{
-			"type": "file",
+		  "type": "file",
 		  "size": 20678,
 		  "name": "LICENSE",
 		  "path": "LICENSE"
@@ -96,7 +281,7 @@ func TestRepositoriesService_GetContent_Directory(t *testing.T) {
 	})
 	_, directoryContents, _, err := client.Repositories.GetContents("o", "r", "p", &RepositoryContentGetOptions{})
 	if err != nil {
-		t.Errorf("Repositories.GetContents_Directory returned error: %v", err)
+		t.Errorf("Repositories.GetContents returned error: %v", err)
 	}
 	want := []*RepositoryContent{{Type: String("dir"), Name: String("lib"), Path: String("lib")},
 		{Type: String("file"), Name: String("LICENSE"), Size: Int(20678), Path: String("LICENSE")}}

@@ -40,38 +40,6 @@ func (e *Event) Payload() (payload interface{}) {
 	return payload
 }
 
-// PushEvent represents a git push to a GitHub repository.
-//
-// GitHub API docs: http://developer.github.com/v3/activity/events/types/#pushevent
-type PushEvent struct {
-	PushID  *int              `json:"push_id,omitempty"`
-	Head    *string           `json:"head,omitempty"`
-	Ref     *string           `json:"ref,omitempty"`
-	Size    *int              `json:"size,omitempty"`
-	Commits []PushEventCommit `json:"commits,omitempty"`
-	Repo    *Repository       `json:"repository,omitempty"`
-}
-
-func (p PushEvent) String() string {
-	return Stringify(p)
-}
-
-// PushEventCommit represents a git commit in a GitHub PushEvent.
-type PushEventCommit struct {
-	SHA      *string       `json:"sha,omitempty"`
-	Message  *string       `json:"message,omitempty"`
-	Author   *CommitAuthor `json:"author,omitempty"`
-	URL      *string       `json:"url,omitempty"`
-	Distinct *bool         `json:"distinct,omitempty"`
-	Added    []string      `json:"added,omitempty"`
-	Removed  []string      `json:"removed,omitempty"`
-	Modified []string      `json:"modified,omitempty"`
-}
-
-func (p PushEventCommit) String() string {
-	return Stringify(p)
-}
-
 // ListEvents drinks from the firehose of all public events across GitHub.
 //
 // GitHub API docs: http://developer.github.com/v3/activity/events/#list-public-events
@@ -221,11 +189,11 @@ func (s *ActivityService) ListEventsPerformedByUser(user string, publicOnly bool
 	return *events, resp, err
 }
 
-// ListEventsRecievedByUser lists the events recieved by a user. If publicOnly is
+// ListEventsReceivedByUser lists the events received by a user. If publicOnly is
 // true, only public events will be returned.
 //
 // GitHub API docs: http://developer.github.com/v3/activity/events/#list-events-that-a-user-has-received
-func (s *ActivityService) ListEventsRecievedByUser(user string, publicOnly bool, opt *ListOptions) ([]Event, *Response, error) {
+func (s *ActivityService) ListEventsReceivedByUser(user string, publicOnly bool, opt *ListOptions) ([]Event, *Response, error) {
 	var u string
 	if publicOnly {
 		u = fmt.Sprintf("users/%v/received_events/public", user)

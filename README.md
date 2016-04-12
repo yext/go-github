@@ -2,12 +2,12 @@
 
 go-github is a Go client library for accessing the [GitHub API][].
 
-**Documentation:** <http://godoc.org/github.com/google/go-github/github>  
+**Documentation:** [![GoDoc](https://godoc.org/github.com/google/go-github/github?status.svg)](https://godoc.org/github.com/google/go-github/github)  
 **Mailing List:** [go-github@googlegroups.com](https://groups.google.com/group/go-github)  
-**Build Status:** [![Build Status](https://travis-ci.org/google/go-github.png?branch=master)](https://travis-ci.org/google/go-github)  
-**Test Coverage:** [![Test Coverage](https://coveralls.io/repos/google/go-github/badge.png?branch=master)](https://coveralls.io/r/google/go-github?branch=master) ([gocov report](https://drone.io/github.com/google/go-github/files/coverage.html))
+**Build Status:** [![Build Status](https://travis-ci.org/google/go-github.svg?branch=master)](https://travis-ci.org/google/go-github)  
+**Test Coverage:** [![Test Coverage](https://coveralls.io/repos/google/go-github/badge.svg?branch=master)](https://coveralls.io/r/google/go-github?branch=master) ([gocov report](https://drone.io/github.com/google/go-github/files/coverage.html))
 
-go-github requires Go version 1.1 or greater.
+go-github requires Go version 1.4 or greater.
 
 ## Usage ##
 
@@ -25,12 +25,11 @@ orgs, _, err := client.Organizations.List("willnorris", nil)
 ```
 
 Some API methods have optional parameters that can be passed.  For example,
-to list repositories for the "github" organization, sorted by the time they
-were last updated:
+to list public repositories for the "github" organization:
 
 ```go
 client := github.NewClient(nil)
-opt := &github.RepositoryListByOrgOptions{Sort: "updated"}
+opt := &github.RepositoryListByOrgOptions{Type: "public"}
 repos, _, err := client.Repositories.ListByOrg("github", opt)
 ```
 
@@ -38,23 +37,29 @@ repos, _, err := client.Repositories.ListByOrg("github", opt)
 
 The go-github library does not directly handle authentication.  Instead, when
 creating a new client, pass an `http.Client` that can handle authentication for
-you.  The easiest and recommended way to do this is using the [goauth2][]
+you.  The easiest and recommended way to do this is using the [oauth2][]
 library, but you can always use any other library that provides an
 `http.Client`.  If you have an OAuth2 access token (for example, a [personal
-API token][]), you can use it with the goauth2 using:
+API token][]), you can use it with oauth2 using:
 
 ```go
-t := &oauth.Transport{
-  Token: &oauth.Token{AccessToken: "... your access token ..."},
+func main() {
+  ts := oauth2.StaticTokenSource(
+    &oauth2.Token{AccessToken: "... your access token ..."},
+  )
+  tc := oauth2.NewClient(oauth2.NoContext, ts)
+
+  client := github.NewClient(tc)
+
+  // list all repositories for the authenticated user
+  repos, _, err := client.Repositories.List("", nil)
 }
-
-client := github.NewClient(t.Client())
-
-// list all repositories for the authenticated user
-repos, _, err := client.Repositories.List("", nil)
 ```
 
-See the [goauth2 docs][] for complete instructions on using that library.
+See the [oauth2 docs][] for complete instructions on using that library.
+
+For API methods that require HTTP Basic Authentication, use the
+[`BasicAuthTransport`](https://godoc.org/github.com/google/go-github/github#BasicAuthTransport).
 
 ### Pagination ###
 
@@ -77,13 +82,15 @@ fmt.Println(resp.NextPage) // outputs 3
 
 For complete usage of go-github, see the full [package docs][].
 
-[GitHub API]: http://developer.github.com/v3/
-[goauth2]: https://code.google.com/p/goauth2/
-[goauth2 docs]: http://godoc.org/code.google.com/p/goauth2/oauth
+[GitHub API]: https://developer.github.com/v3/
+[oauth2]: https://github.com/golang/oauth2
+[oauth2 docs]: https://godoc.org/golang.org/x/oauth2
 [personal API token]: https://github.com/blog/1509-personal-api-tokens
-[package docs]: http://godoc.org/github.com/google/go-github/github
+[package docs]: https://godoc.org/github.com/google/go-github/github
 
+### Integration Tests ###
 
+You can run integration tests from the `tests` directory. See the integration tests [README](tests/README.md).
 ## Roadmap ##
 
 This library is being initially developed for an internal application at

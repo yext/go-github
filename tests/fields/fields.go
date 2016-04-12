@@ -24,8 +24,8 @@ import (
 	"reflect"
 	"strings"
 
-	"code.google.com/p/goauth2/oauth"
 	"github.com/google/go-github/github"
+	"golang.org/x/oauth2"
 )
 
 var (
@@ -43,13 +43,13 @@ func main() {
 
 	token := os.Getenv("GITHUB_AUTH_TOKEN")
 	if token == "" {
-		println("!!! No OAuth token.  Some tests won't run. !!!\n")
+		print("!!! No OAuth token.  Some tests won't run. !!!\n\n")
 		client = github.NewClient(nil)
 	} else {
-		t := &oauth.Transport{
-			Token: &oauth.Token{AccessToken: token},
-		}
-		client = github.NewClient(t.Client())
+		tc := oauth2.NewClient(oauth2.NoContext, oauth2.StaticTokenSource(
+			&oauth2.Token{AccessToken: token},
+		))
+		client = github.NewClient(tc)
 		auth = true
 	}
 

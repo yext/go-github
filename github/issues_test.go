@@ -176,7 +176,7 @@ func TestIssuesService_Create(t *testing.T) {
 		Title:    String("t"),
 		Body:     String("b"),
 		Assignee: String("a"),
-		Labels:   []string{"l1", "l2"},
+		Labels:   &[]string{"l1", "l2"},
 	}
 
 	mux.HandleFunc("/repos/o/r/issues", func(w http.ResponseWriter, r *http.Request) {
@@ -239,4 +239,36 @@ func TestIssuesService_Edit(t *testing.T) {
 func TestIssuesService_Edit_invalidOwner(t *testing.T) {
 	_, _, err := client.Issues.Edit("%", "r", 1, nil)
 	testURLParseError(t, err)
+}
+
+func TestIssuesService_Lock(t *testing.T) {
+	setup()
+	defer teardown()
+
+	mux.HandleFunc("/repos/o/r/issues/1/lock", func(w http.ResponseWriter, r *http.Request) {
+		testMethod(t, r, "PUT")
+		testHeader(t, r, "Accept", mediaTypeIssueLockingPreview)
+
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	if _, err := client.Issues.Lock("o", "r", 1); err != nil {
+		t.Errorf("Issues.Lock returned error: %v", err)
+	}
+}
+
+func TestIssuesService_Unlock(t *testing.T) {
+	setup()
+	defer teardown()
+
+	mux.HandleFunc("/repos/o/r/issues/1/lock", func(w http.ResponseWriter, r *http.Request) {
+		testMethod(t, r, "DELETE")
+		testHeader(t, r, "Accept", mediaTypeIssueLockingPreview)
+
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	if _, err := client.Issues.Unlock("o", "r", 1); err != nil {
+		t.Errorf("Issues.Unlock returned error: %v", err)
+	}
 }

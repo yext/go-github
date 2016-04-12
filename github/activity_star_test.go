@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"reflect"
 	"testing"
+	"time"
 )
 
 func TestActivityService_ListStargazers(t *testing.T) {
@@ -18,11 +19,12 @@ func TestActivityService_ListStargazers(t *testing.T) {
 
 	mux.HandleFunc("/repos/o/r/stargazers", func(w http.ResponseWriter, r *http.Request) {
 		testMethod(t, r, "GET")
+		testHeader(t, r, "Accept", mediaTypeStarringPreview)
 		testFormValues(t, r, values{
 			"page": "2",
 		})
 
-		fmt.Fprint(w, `[{"id":1}]`)
+		fmt.Fprint(w, `[{"starred_at":"2002-02-10T15:30:00Z","user":{"id":1}}]`)
 	})
 
 	stargazers, _, err := client.Activity.ListStargazers("o", "r", &ListOptions{Page: 2})
@@ -30,7 +32,7 @@ func TestActivityService_ListStargazers(t *testing.T) {
 		t.Errorf("Activity.ListStargazers returned error: %v", err)
 	}
 
-	want := []User{{ID: Int(1)}}
+	want := []Stargazer{{StarredAt: &Timestamp{time.Date(2002, time.February, 10, 15, 30, 0, 0, time.UTC)}, User: &User{ID: Int(1)}}}
 	if !reflect.DeepEqual(stargazers, want) {
 		t.Errorf("Activity.ListStargazers returned %+v, want %+v", stargazers, want)
 	}
@@ -42,7 +44,8 @@ func TestActivityService_ListStarred_authenticatedUser(t *testing.T) {
 
 	mux.HandleFunc("/user/starred", func(w http.ResponseWriter, r *http.Request) {
 		testMethod(t, r, "GET")
-		fmt.Fprint(w, `[{"id":1}]`)
+		testHeader(t, r, "Accept", mediaTypeStarringPreview)
+		fmt.Fprint(w, `[{"starred_at":"2002-02-10T15:30:00Z","repo":{"id":1}}]`)
 	})
 
 	repos, _, err := client.Activity.ListStarred("", nil)
@@ -50,7 +53,7 @@ func TestActivityService_ListStarred_authenticatedUser(t *testing.T) {
 		t.Errorf("Activity.ListStarred returned error: %v", err)
 	}
 
-	want := []Repository{{ID: Int(1)}}
+	want := []StarredRepository{{StarredAt: &Timestamp{time.Date(2002, time.February, 10, 15, 30, 0, 0, time.UTC)}, Repository: &Repository{ID: Int(1)}}}
 	if !reflect.DeepEqual(repos, want) {
 		t.Errorf("Activity.ListStarred returned %+v, want %+v", repos, want)
 	}
@@ -62,12 +65,13 @@ func TestActivityService_ListStarred_specifiedUser(t *testing.T) {
 
 	mux.HandleFunc("/users/u/starred", func(w http.ResponseWriter, r *http.Request) {
 		testMethod(t, r, "GET")
+		testHeader(t, r, "Accept", mediaTypeStarringPreview)
 		testFormValues(t, r, values{
 			"sort":      "created",
 			"direction": "asc",
 			"page":      "2",
 		})
-		fmt.Fprint(w, `[{"id":2}]`)
+		fmt.Fprint(w, `[{"starred_at":"2002-02-10T15:30:00Z","repo":{"id":2}}]`)
 	})
 
 	opt := &ActivityListStarredOptions{"created", "asc", ListOptions{Page: 2}}
@@ -76,7 +80,7 @@ func TestActivityService_ListStarred_specifiedUser(t *testing.T) {
 		t.Errorf("Activity.ListStarred returned error: %v", err)
 	}
 
-	want := []Repository{{ID: Int(2)}}
+	want := []StarredRepository{{StarredAt: &Timestamp{time.Date(2002, time.February, 10, 15, 30, 0, 0, time.UTC)}, Repository: &Repository{ID: Int(2)}}}
 	if !reflect.DeepEqual(repos, want) {
 		t.Errorf("Activity.ListStarred returned %+v, want %+v", repos, want)
 	}
